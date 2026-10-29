@@ -75,7 +75,6 @@ def main():
         raise ValueError("Book2 headers differ; refusing to overwrite")
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    seen = set()
     output = []
     for target in targets:
         channel_id = target["channel_id"].strip()
@@ -109,19 +108,19 @@ def main():
             for position, item in enumerate(pages(youtube.playlistItems(), part="snippet,contentDetails",
                                                    playlistId=playlist_id, maxResults=50)):
                 video_id = item.get("contentDetails", {}).get("videoId")
-                if not video_id or video_id in seen or video_id in videos:
+                if not video_id:
                     continue
-                videos[video_id] = (playlist_id, playlist_title, position)
+                videos.setdefault(video_id, []).append((playlist_id, playlist_title, position))
         for batch in chunks(list(videos), 50):
             details = youtube.videos().list(part="snippet,contentDetails,status", id=",".join(batch),
                                            maxResults=50).execute().get("items", [])
             for video in details:
                 video_id = video["id"]
-                if video_id in seen:
-                    continue
-                seen.add(video_id)
                 snippet = video["snippet"]
-                playlist_id, playlist_title, position = videos[video_id]
+                memberships = videos[video_id]
+                playlist_id = ",".join(p[0] for p in memberships)
+                playlist_title = " | ".join(p[1] for p in memberships)
+                position = memberships[0][2]
                 output.append([
                     run_id, run_id, channel_id, channel["snippet"]["title"],
                     playlist_id, playlist_title, video_id, snippet.get("title", ""),
@@ -130,14 +129,16 @@ def main():
                     snippet.get("publishedAt", ""), video["contentDetails"].get("duration", ""),
                     position, ",".join(snippet.get("tags", [])),
                     video.get("status", {}).get("privacyStatus", ""),
-                    "uploads" if playlist_id == uploads else "playlist",
+                    "uploads" if len(memberships) == 1 and memberships[0][0] == uploads else "playlist",
                 ])
         print(f"{target['display_name']}: {len(videos)} playlist entries")
     # Batch writes limit request count and make initial runs restart-friendly by checking IDs.
     previous = sheets.values().get(spreadsheetId=book2, range="youtube_videos_raw!G2:G").execute().get("values", [])
     stored = {row[0] for row in previous if row}
     new_rows = [row for row in output if row[6] not in stored]
-    for batch in chunks(new_rows, 300):
+    # Book2 currently uses video_id as a global key; repeated videos across channels
+    # remain represented once. A future normalized provenance table will address this.
+    for batch in chunks(new_rows, 100):
         sheets.values().append(spreadsheetId=book2, range="youtube_videos_raw!A:Q",
                                valueInputOption="RAW", insertDataOption="INSERT_ROWS",
                                body={"values": batch}).execute()

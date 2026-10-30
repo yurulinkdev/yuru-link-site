@@ -3,16 +3,15 @@
 
 Credentials:
   YOUTUBE_API_KEY: YouTube Data API v3 key
-  GOOGLE_SERVICE_ACCOUNT_JSON: full JSON service account credential
+  Google Sheets: Application Default Credentials (WIF on GitHub Actions)
   BOOK1_SPREADSHEET_ID / BOOK2_SPREADSHEET_ID
 Share both Sheets with the service account email (Editor).
 """
-import json
 import os
 import time
 from datetime import datetime, timezone
 
-from google.oauth2 import service_account
+import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -53,8 +52,7 @@ def chunks(items, size):
 
 def main():
     youtube = build("youtube", "v3", developerKey=os.environ["YOUTUBE_API_KEY"], cache_discovery=False)
-    credentials = service_account.Credentials.from_service_account_info(
-        json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]),
+    credentials, _ = google.auth.default(
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
     sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False).spreadsheets()

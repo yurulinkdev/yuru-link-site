@@ -178,13 +178,28 @@ def append_chunks(sheets, book_id, tab, rows, width, keys, headers, max_bytes=12
         chunks.append(chunk)
     end_col = chr(64 + width)
     for number, values in enumerate(chunks, 1):
-        # append is non-idempotent on ambiguous network failures; do not blindly
-        # retry an uncertain append. Re-read the staging tab and resume instead.
-        call(sheets.values().append(
-            spreadsheetId=book_id, range=f"{tab}!A:{end_col}",
-            valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-            body={"values": values},
-        ), f"{tab} chunk {number}/{len(chunks)}")
+        # Append is non-idempotent. On an ambiguous API error, check keys first.
+        expected_keys = {tuple(row[i] for i in keys) for row in values}
+        for attempt in range(9):
+            try:
+                sheets.values().append(
+                    spreadsheetId=book_id, range=f"{tab}!A:{end_col}",
+                    valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+                    body={"values": values},
+                ).execute()
+                break
+            except HttpError as exc:
+                if exc.resp.status not in (429, 500, 502, 503, 504):
+                    raise
+                actual = read_index(sheets, book_id, tab, headers, keys)
+                committed = expected_keys.intersection(actual)
+                if committed == expected_keys:
+                    break
+                if committed or attempt == 8:
+                    raise RuntimeError(
+                        f"{tab}: partial or uncertain append; stop safely"
+                    ) from exc
+                time.sleep(min(90, 2 ** attempt + random.uniform(0, 1)))
         print(f"{tab}: wrote chunk {number}/{len(chunks)} ({len(values)} rows)", flush=True)
 
 def main():

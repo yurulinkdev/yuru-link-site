@@ -6,6 +6,9 @@ Run with --dry-run first. Uses ADC/WIF. Does not change legacy tabs or workflows
 import argparse
 import os
 import re
+import random
+import time
+from googleapiclient.errors import HttpError
 from collections import defaultdict
 
 import google.auth
@@ -40,6 +43,19 @@ def pad(row, n):
     return (row + [""] * n)[:n]
 
 
+def append_with_retry(request, label, max_attempts=8):
+    for attempt in range(max_attempts):
+        try:
+            return request.execute()
+        except HttpError as exc:
+            status = exc.resp.status
+            if status not in (429, 500, 502, 503, 504) or attempt == max_attempts - 1:
+                raise
+            delay = min(90, 2 ** attempt + random.uniform(0, 1))
+            print(f"{label}: HTTP {status}; retry {attempt + 1}/{max_attempts - 1} in {delay:.1f}s", flush=True)
+            time.sleep(delay)
+
+
 def append_missing(api, book, tab, headers, desired, key_columns, dry_run):
     existing = checked_rows(api, book, tab, headers, "Z60000")
     keys = {tuple(pad(r, len(headers))[i] for i in key_columns) for r in existing}
@@ -54,10 +70,11 @@ def append_missing(api, book, tab, headers, desired, key_columns, dry_run):
         return
     # Sheet capacity is enlarged before appending; append API may insert rows itself,
     # but large imports should not depend on the default 1000-row grid.
-    for offset in range(0, len(new), 100):
-        api.values().append(spreadsheetId=book, range=f"{tab}!A:{chr(64+len(headers))}",
+    for offset in range(0, len(new), 500):
+        append_with_retry(api.values().append(spreadsheetId=book, range=f"{tab}!A:{chr(64+len(headers))}",
                             valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-                            body={"values": new[offset:offset+100]}).execute()
+                            body={"values": new[offset:offset+500]}), f"{tab} offset={offset}")
+        print(f"{tab}: appended {min(offset + 500, len(new))}/{len(new)}", flush=True)
 
 
 def main():
@@ -121,9 +138,9 @@ def main():
     print(f"Book0: existing={len(existing_requests)}, missing={len(new_requests)}")
     # Never remove user-entered Book0 targets or overwrite human changes.
     if not args.dry_run and new_requests:
-        api.values().append(spreadsheetId=b0, range="collection_requests!A:B",
+        append_with_retry(api.values().append(spreadsheetId=b0, range="collection_requests!A:B",
                             valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-                            body={"values": new_requests}).execute()
+                            body={"values": new_requests}), "Book0 collection_requests")
 
     append_missing(api, b1, "collection_targets_v2", TARGET_HEADERS, targets, (0,), args.dry_run)
 

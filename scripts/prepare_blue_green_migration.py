@@ -86,7 +86,7 @@ def build_data(sheets, ids):
         if row[2] and row[3]:
             historic_ids[row[3]].add(row[2])
     # Resolve using exact, historically observed titles.
-    aliases = {"ゆる書道学ラジオ（書く書くしかじか）": "書く書くしかじか（ゆる書道学ラジオ）"}
+    aliases = {"ゆる書道学ラジオ（書く書くしかじか）": "書く書くしかじか"}
     requests, targets = [], []
     for raw in legacy_targets:
         row = pad(raw, 10)
@@ -150,7 +150,7 @@ def prepare_plan(sheets, ids, desired):
                     additions.append(row)
                     seen.add(key)
             plan[book][tab] = {"existing": len(existing), "add": additions,
-                               "expected": len(seen)}
+                               "expected": len(seen), "expected_keys": seen}
     return plan
 
 def copy_book(drive, source, label, generation):
@@ -226,8 +226,10 @@ def main():
                 append_chunks(sheets, manifest["green"][book], tab,
                               plan[book][tab]["add"], len(headers), keys, headers)
                 actual = read_index(sheets, manifest["green"][book], tab, headers, keys)
-                if len(actual) != plan[book][tab]["expected"]:
-                    raise ValueError(f"{book}/{tab}: expected {plan[book][tab]['expected']} rows, got {len(actual)}")
+                if set(actual) != plan[book][tab]["expected_keys"]:
+                    missing = plan[book][tab]["expected_keys"] - set(actual)
+                    unexpected = set(actual) - plan[book][tab]["expected_keys"]
+                    raise ValueError(f"{book}/{tab}: key mismatch; missing={len(missing)}, unexpected={len(unexpected)}")
                 print(f"VERIFIED {book}/{tab}: {len(actual)} rows", flush=True)
         manifest["status"] = "READY_FOR_ACTIVATION"
         save()

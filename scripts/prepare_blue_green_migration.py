@@ -161,7 +161,7 @@ def copy_book(drive, source, label, generation):
     ), f"copy {label}")
     return result["id"]
 
-def append_chunks(sheets, book_id, tab, rows, width, max_bytes=1200000):
+def append_chunks(sheets, book_id, tab, rows, width, keys, headers, max_bytes=1200000):
     if not rows:
         return
     chunks, chunk, size = [], [], 0
@@ -224,7 +224,7 @@ def main():
         for book, tabs in TABS.items():
             for tab, headers, keys in tabs:
                 append_chunks(sheets, manifest["green"][book], tab,
-                              plan[book][tab]["add"], len(headers))
+                              plan[book][tab]["add"], len(headers), keys, headers)
                 actual = read_index(sheets, manifest["green"][book], tab, headers, keys)
                 if len(actual) != plan[book][tab]["expected"]:
                     raise ValueError(f"{book}/{tab}: expected {plan[book][tab]['expected']} rows, got {len(actual)}")

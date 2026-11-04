@@ -26,7 +26,8 @@ jobs:
           cache-dependency-path: scripts/requirements-collector.txt
       - run: pip install -r scripts/requirements-collector.txt
       - name: Offline regression tests
-        run: python -m unittest discover -s tests -p "test_prepare_blue_green_migration.py"\n      - uses: google-github-actions/auth@v3
+        run: python -m unittest discover -s tests -p "test_prepare_blue_green_migration.py"
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}

@@ -38,7 +38,8 @@ jobs:
           APPLY: ${{ inputs.apply }}
         run: |
           if [ "$APPLY" = "true" ]; then
-            python scripts/migrate_book0_book2.py
+            echo "Direct Blue writes are disabled; use prepare-blue-green-migration.yml instead." >&2
+            exit 1
           else
             python scripts/migrate_book0_book2.py --dry-run
           fi
